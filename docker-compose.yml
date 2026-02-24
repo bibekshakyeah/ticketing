@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ticketing_db
+      POSTGRES_USER: ticketing
+      POSTGRES_PASSWORD: ticketing123
+    ports:
+      - "5433:5432"
+    volumes:
+      - ticketing_data:/var/lib/postgresql/data
+
+volumes:
+  ticketing_data:

@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coding Test: High-Concurrency Event Ticketing</title>
+    <style>
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --success: #27ae60;
+            --warning: #f39c12;
+            --danger: #c0392b;
+            --bg: #f8f9fa;
+            --card: #ffffff;
+            --text: #2c3e50;
+            --muted: #7f8c8d;
+            --border: #e0e0e0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at 30% 50%, rgba(233,69,96,0.15), transparent 60%),
+                        radial-gradient(circle at 70% 50%, rgba(15,52,96,0.2), transparent 60%);
+        }
+        .header * { position: relative; z-index: 1; }
+        .header h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+        .header p { opacity: 0.8; font-size: 0.95rem; }
+        .header .badge {
+            display: inline-block;
+            background: var(--highlight);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            font-weight: 600;
+        }
+        .header .badge-hot {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+
+        /* Tabs */
+        .tab-nav {
+            display: flex;
+            gap: 0.25rem;
+            background: var(--card);
+            border-radius: 12px 12px 0 0;
+            padding: 0.5rem 0.5rem 0;
+            overflow-x: auto;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .tab-btn {
+            padding: 0.75rem 1.25rem;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--muted);
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .tab-btn:hover { color: var(--accent); }
+        .tab-btn.active {
+            color: var(--highlight);
+            border-bottom-color: var(--highlight);
+            background: rgba(233,69,96,0.05);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-body {
+            background: var(--card);
+            border-radius: 0 0 12px 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 2rem;
+        }
+
+        /* Task blocks */
+        .task-block {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1.25rem;
+            overflow: hidden;
+        }
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            cursor: pointer;
+            background: #fafbfc;
+            transition: background 0.2s;
+        }
+        .task-header:hover { background: #f0f2f5; }
+        .task-header h3 {
+            font-size: 0.95rem;
+            flex: 1;
+            padding-right: 1rem;
+        }
+        .task-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background: var(--accent);
+            color: white;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-right: 0.75rem;
+            flex-shrink: 0;
+        }
+        .task-meta { display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }
+
+        .time-badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: #e8f5e9;
+            color: #27ae60;
+        }
+        .difficulty {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .difficulty.easy { background: #e8f5e9; color: #27ae60; }
+        .difficulty.medium { background: #fff3e0; color: #e67e22; }
+        .difficulty.hard { background: #ffeaea; color: #c0392b; }
+        .difficulty.critical { background: #1a1a2e; color: #ff6b6b; }
+        .points {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: #eef2ff;
+            color: var(--accent);
+        }
+
+        .chevron {
+            width: 20px;
+            height: 20px;
+            transition: transform 0.3s;
+            color: var(--muted);
+        }
+        .task-block.open .chevron { transform: rotate(180deg); }
+
+        .task-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+        }
+        .task-block.open .task-body { max-height: 8000px; }
+        .task-body-inner { padding: 1.25rem; border-top: 1px solid var(--border); }
+
+        /* Rubric */
+        .rubric {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .rubric-title {
+            font-weight: 700;
+            color: var(--success);
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+        .rubric-content { display: none; font-size: 0.85rem; }
+        .rubric.open .rubric-content { display: block; }
+        .rubric ul { padding-left: 1.25rem; }
+        .rubric li { margin-bottom: 0.4rem; }
+        .rubric .excellent { color: #16a34a; font-weight: 600; }
+        .rubric .good { color: #2563eb; font-weight: 600; }
+        .rubric .acceptable { color: #d97706; font-weight: 600; }
+        .rubric .poor { color: #dc2626; font-weight: 600; }
+
+        .context {
+            background: #eef2ff;
+            border-left: 4px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            border-radius: 0 6px 6px 0;
+            font-size: 0.88rem;
+        }
+        .context strong { color: var(--accent); }
+
+        .hot-context {
+            background: #fff5f5;
+            border-left: 4px solid var(--highlight);
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            border-radius: 0 6px 6px 0;
+            font-size: 0.88rem;
+        }
+        .hot-context strong { color: var(--highlight); }
+
+        .code-block {
+            background: #1e1e2e;
+            color: #cdd6f4;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 0.82rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            line-height: 1.5;
+            white-space: pre;
+        }
+        .code-block .keyword { color: #cba6f7; }
+        .code-block .string { color: #a6e3a1; }
+        .code-block .comment { color: #6c7086; font-style: italic; }
+        .code-block .annotation { color: #f9e2af; }
+        .code-block .type { color: #89b4fa; }
+        .code-block .number { color: #fab387; }
+
+        .section-title {
+            font-size: 1.1rem;
+            color: var(--primary);
+            margin-bottom: 1.25rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--highlight);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .interview-tip {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .interview-tip strong { color: #92400e; }
+
+        .info-box {
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .info-box strong { color: var(--accent); }
+
+        .warning-box {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .warning-box strong { color: #991b1b; }
+
+        .danger-box {
+            background: linear-gradient(135deg, #1a1a2e, #302b63);
+            border: 1px solid #e94560;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.88rem;
+            color: white;
+        }
+        .danger-box strong { color: #ff6b6b; }
+        .danger-box code {
+            background: rgba(255,255,255,0.1);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        /* File tree */
+        .file-tree {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            background: #1e1e2e;
+            color: #cdd6f4;
+            padding: 1rem;
+            border-radius: 8px;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            white-space: pre;
+        }
+        .file-tree .todo { color: #f38ba8; font-weight: 700; }
+        .file-tree .done { color: #a6e3a1; }
+        .file-tree .dir { color: #89b4fa; }
+
+        /* Table */
+        .eval-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin: 1rem 0;
+        }
+        .eval-table th {
+            background: var(--primary);
+            color: white;
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: 600;
+        }
+        .eval-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .eval-table tr:hover { background: #f8f9fa; }
+        .eval-table tr:nth-child(even) { background: #fafbfc; }
+        .eval-table tr:nth-child(even):hover { background: #f0f2f5; }
+
+        /* Scoring */
+        .scoring-band {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .scoring-band .band-label {
+            font-weight: 700;
+            min-width: 120px;
+        }
+        .band-strong { background: #dcfce7; border: 1px solid #86efac; }
+        .band-strong .band-label { color: #166534; }
+        .band-hire { background: #dbeafe; border: 1px solid #93c5fd; }
+        .band-hire .band-label { color: #1e40af; }
+        .band-borderline { background: #fef3c7; border: 1px solid #fcd34d; }
+        .band-borderline .band-label { color: #92400e; }
+        .band-nohire { background: #fee2e2; border: 1px solid #fca5a5; }
+        .band-nohire .band-label { color: #991b1b; }
+
+        .score-summary {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .score-summary h3 { margin-bottom: 1rem; }
+        .score-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .score-item {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+        .score-item label { font-size: 0.8rem; opacity: 0.8; display: block; }
+        .score-item input {
+            width: 100%;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            margin-top: 0.25rem;
+        }
+        .score-item input::placeholder { color: rgba(255,255,255,0.4); }
+        .total-score {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        .score-verdict {
+            text-align: center;
+            font-size: 1rem;
+            margin-top: 0.5rem;
+            opacity: 0.9;
+        }
+
+        .notes-area {
+            width: 100%;
+            min-height: 80px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem;
+            font-family: inherit;
+            font-size: 0.88rem;
+            resize: vertical;
+            margin-top: 0.5rem;
+        }
+
+        .endpoint-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            margin: 0.75rem 0;
+        }
+        .endpoint-table th {
+            background: #f8f9fa;
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border);
+        }
+        .endpoint-table td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .endpoint-table code {
+            background: #eef2ff;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.78rem;
+        }
+        .method-post { color: #16a34a; font-weight: 700; }
+        .method-get { color: #2563eb; font-weight: 700; }
+        .method-delete { color: #dc2626; font-weight: 700; }
+
+        /* Flow diagram */
+        .flow-diagram {
+            background: #1e1e2e;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: #cdd6f4;
+            overflow-x: auto;
+            line-height: 1.8;
+            white-space: pre;
+        }
+        .flow-diagram .step { color: #89b4fa; font-weight: 700; }
+        .flow-diagram .action { color: #a6e3a1; }
+        .flow-diagram .fail { color: #f38ba8; }
+        .flow-diagram .warn { color: #f9e2af; }
+        .flow-diagram .arrow { color: #6c7086; }
+
+        /* Timer */
+        .timer-widget {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            background: linear-gradient(135deg, #0f0c29, #302b63);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            z-index: 1000;
+            font-size: 0.85rem;
+        }
+        .timer-widget button {
+            padding: 0.3rem 0.6rem;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+        .timer-widget button:hover { background: rgba(255,255,255,0.2); }
+        #timerDisplay {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 700;
+            min-width: 65px;
+            text-align: center;
+        }
+        .timer-warning { color: #fcd34d; }
+        .timer-danger { color: #f38ba8; animation: blink 1s step-end infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
+
+        .candidate-selector {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+        .candidate-selector .tab-btn {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            border-bottom: none;
+        }
+        .candidate-selector .tab-btn.active {
+            border-color: var(--highlight);
+            background: rgba(233,69,96,0.08);
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Coding Test: High-Concurrency Event Ticketing</h1>
+    <p>Senior Backend Engineer &bull; Spring Boot + JPA + PostgreSQL</p>
+    <span class="badge">60 Minutes</span>
+    <span class="badge-hot">Hot Onsale Problem</span>
+</div>
+
+<div class="container">
+
+    <div class="tab-nav" id="tabNav">
+        <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+        <button class="tab-btn" onclick="switchTab('tasks')">Tasks</button>
+        <button class="tab-btn" onclick="switchTab('api')">API Reference</button>
+        <!-- Rubric & Scoring tabs hidden from candidates — see ticketing-test-instructions.html for interviewer version -->
+
+    </div>
+
+    <div class="tab-body">
+
+        <!-- ===================== OVERVIEW ===================== -->
+        <div class="tab-content active" id="tab-overview">
+            <div class="section-title">The Problem</div>
+
+            <div class="danger-box">
+                <strong>Scenario:</strong> Taylor Swift's Eras Tour tickets go on sale at 10:00 AM.
+                10,000 users are refreshing the page. There are only <strong>50 VIP Floor tickets</strong>.
+                At 10:00:00.000, all 10,000 users click "Buy" simultaneously.
+                <br><br>
+                Your system must sell <strong>exactly 50</strong> tickets &mdash; not 49, not 51.
+                Every oversold ticket costs the company <code>$350 + legal fees + PR disaster</code>.
+            </div>
+
+            <div class="info-box">
+                <strong>What you're building:</strong> A ticket hold-and-confirm system. Users first <em>hold</em> tickets
+                (2-minute window), then <em>confirm</em> with payment &mdash; which triggers a confirmation email.
+                If they don't confirm in time, tickets return to the pool.
+                This is how Ticketmaster, StubHub, and every real ticketing system works.
+            </div>
+
+            <h3 style="margin: 1.5rem 0 0.75rem; font-size: 0.95rem;">System Flow</h3>
+            <div class="flow-diagram">
+<span class="step">[User]</span> <span class="arrow">──POST /hold──&gt;</span> <span class="step">[Server]</span> <span class="arrow">──atomic UPDATE──&gt;</span> <span class="step">[DB: available -= N]</span>
+   <span class="arrow">│</span>                           <span class="arrow">│</span>
+   <span class="arrow">│</span>  <span class="action">Hold created (2 min TTL)</span>  <span class="arrow">│</span>  <span class="fail">If available &lt; N → SOLD OUT (409)</span>
+   <span class="arrow">│</span>                           <span class="arrow">│</span>
+<span class="step">[User]</span> <span class="arrow">──POST /confirm──&gt;</span> <span class="step">[Server]</span> <span class="arrow">──create order──&gt;</span> <span class="step">[DB: TicketOrder]</span>
+   <span class="arrow">│</span>                           <span class="arrow">│</span>
+   <span class="arrow">│</span>  <span class="warn">If hold expired → 410 GONE</span>  <span class="arrow">│</span>
+   <span class="arrow">│</span>                           <span class="arrow">│</span>
+<span class="step">[Scheduler]</span> <span class="arrow">─every 30s─&gt;</span> <span class="action">Find expired ACTIVE holds → release tickets back</span>
+            </div>
+
+            <h3 style="margin: 1.5rem 0 0.75rem; font-size: 0.95rem;">The Critical Challenge</h3>
+            <div class="hot-context">
+                <strong>The concurrency problem:</strong> When 10,000 users hit "Buy" at the same millisecond,
+                a naive read-check-write approach will oversell. Multiple threads will read the same
+                <code>availableQuantity</code> value, all pass the check, and all write a decrement.
+                <br><br>
+                <strong>Your job:</strong> Design the inventory decrement so that it is impossible to oversell,
+                regardless of how many concurrent requests arrive. Then write a test that proves it.
+            </div>
+
+            <h3 style="margin: 1.5rem 0 0.75rem; font-size: 0.95rem;">Project Structure</h3>
+            <div class="file-tree">
+<span class="dir">coding-test-ticketing/</span>
+├── pom.xml                              <span class="done">pre-configured</span>
+├── docker-compose.yml                   <span class="done">PostgreSQL 16</span>
+├── src/main/java/com/example/ticketing/
+│   ├── TicketingApplication.java        <span class="done">pre-built</span>
+│   ├── entity/
+│   │   ├── Event.java                   <span class="done">pre-built</span>
+│   │   ├── TicketTier.java              <span class="done">pre-built (the hot table)</span>
+│   │   ├── HoldStatus.java              <span class="done">pre-built enum</span>
+│   │   ├── TicketHold.java              <span class="todo">TODO: complete entity</span>
+│   │   └── TicketOrder.java             <span class="todo">TODO: complete entity</span>
+│   ├── repository/
+│   │   ├── EventRepository.java         <span class="done">pre-built</span>
+│   │   ├── TicketTierRepository.java    <span class="todo">TODO: atomic queries</span>
+│   │   ├── TicketHoldRepository.java    <span class="todo">TODO: hold queries</span>
+│   │   └── TicketOrderRepository.java   <span class="todo">TODO: order queries</span>
+│   ├── dto/                             <span class="done">all pre-built</span>
+│   ├── service/
+│   │   └── TicketingService.java        <span class="todo">TODO: all business logic</span>
+│   ├── controller/
+│   │   └── TicketingController.java     <span class="todo">TODO: REST endpoints</span>
+│   ├── notification/
+│   │   ├── NotificationService.java    <span class="done">pre-built interface</span>
+│   │   └── LoggingNotificationService  <span class="done">pre-built (logs emails)</span>
+│   ├── exception/                       <span class="done">all pre-built</span>
+│   └── config/
+│       ├── DataInitializer.java         <span class="done">seeds 2 events</span>
+│       └── HoldExpiryScheduler.java     <span class="done">calls your cleanup method</span>
+└── src/test/java/.../
+    └── TicketingServiceTest.java        <span class="todo">TODO: write tests</span>
+            </div>
+
+            <h3 style="margin: 1.5rem 0 0.75rem; font-size: 0.95rem;">Seed Data</h3>
+            <table class="eval-table">
+                <tr>
+                    <th>Event</th>
+                    <th>Tier</th>
+                    <th>Price</th>
+                    <th>Tickets</th>
+                    <th>On Sale?</th>
+                </tr>
+                <tr>
+                    <td rowspan="4"><strong>Event 1:</strong> Taylor Swift &mdash; Eras Tour<br><small>National Stadium</small></td>
+                    <td>VIP Floor</td><td>$350.00</td><td>50</td><td rowspan="4" style="color:#27ae60;font-weight:700">YES (yesterday)</td>
+                </tr>
+                <tr><td>Gold Circle</td><td>$200.00</td><td>200</td></tr>
+                <tr><td>General Admission</td><td>$95.00</td><td>500</td></tr>
+                <tr><td>Balcony</td><td>$55.00</td><td>250</td></tr>
+                <tr>
+                    <td rowspan="3"><strong>Event 2:</strong> Champions League Final<br><small>Wembley Stadium</small></td>
+                    <td>Category 1</td><td>$500.00</td><td>100</td><td rowspan="3" style="color:#c0392b;font-weight:700">NOT YET (tomorrow)</td>
+                </tr>
+                <tr><td>Category 2</td><td>$250.00</td><td>300</td></tr>
+                <tr><td>Category 3</td><td>$120.00</td><td>600</td></tr>
+            </table>
+
+            <h3 style="margin: 1.5rem 0 0.75rem; font-size: 0.95rem;">Time Allocation</h3>
+            <table class="eval-table">
+                <tr><th>Task</th><th>Time</th><th>Difficulty</th><th>Points</th></tr>
+                <tr><td>1. Complete Entities + Repositories</td><td>10 min</td><td><span class="difficulty easy">Warm-up</span></td><td>15</td></tr>
+                <tr><td>2. Implement REST Endpoints</td><td>10 min</td><td><span class="difficulty medium">Medium</span></td><td>15</td></tr>
+                <tr><td>3. Core Logic: Hold &rarr; Confirm &rarr; Cancel &rarr; Expire</td><td>25 min</td><td style="color:#c0392b;font-weight:700">HARD</td><td>40</td></tr>
+                <tr><td>4. Write Tests (concurrency test is REQUIRED)</td><td>15 min</td><td><span class="difficulty hard">Hard</span></td><td>30</td></tr>
+                <tr><td colspan="3" style="text-align:right;font-weight:700">Total</td><td><strong>100</strong></td></tr>
+            </table>
+
+            <div class="interview-tip">
+                <strong>Quick start:</strong>
+                <code>docker-compose up -d && ./mvnw spring-boot:run</code><br>
+                Tests: <code>./mvnw test</code> (uses H2, no Docker needed)
+            </div>
+        </div>
+
+        <!-- ===================== TASKS ===================== -->
+        <div class="tab-content" id="tab-tasks">
+            <div class="section-title">Implementation Tasks</div>
+
+            <div style="text-align: right; margin-bottom: 1rem;">
+                <button onclick="toggleAll('tab-tasks')" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border: 1px solid var(--border); border-radius: 6px; background: white; cursor: pointer;">Expand / Collapse All</button>
+            </div>
+
+            <!-- Task 1: Entities -->
+            <div class="task-block" onclick="toggleTask(this)">
+                <div class="task-header">
+                    <h3><span class="task-number">1</span> Complete Entities &amp; Repository Queries</h3>
+                    <div class="task-meta">
+                        <span class="time-badge">10 min</span>
+                        <span class="difficulty easy">Warm-up</span>
+                        <span class="points">15 pts</span>
+                        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                </div>
+                <div class="task-body"><div class="task-body-inner">
+                    <div class="context">
+                        <strong>Files:</strong> <code>TicketHold.java</code>, <code>TicketOrder.java</code>,
+                        <code>TicketTierRepository.java</code>, <code>TicketHoldRepository.java</code>, <code>TicketOrderRepository.java</code>
+                    </div>
+
+                    <h4 style="margin-bottom: 0.5rem;">Entities: TicketHold &amp; TicketOrder</h4>
+                    <ul style="margin-bottom: 1rem; padding-left: 1.25rem; font-size: 0.88rem;">
+                        <li>Add appropriate Bean Validation constraints on all fields</li>
+                        <li>Ensure enums are stored as readable strings in the database</li>
+                        <li>Add optimistic locking</li>
+                        <li>Auto-populate <code>createdAt</code> on insert</li>
+                        <li><strong>Bonus:</strong> Add indexes that would speed up common queries</li>
+                    </ul>
+
+                    <h4 style="margin-bottom: 0.5rem;">Repositories</h4>
+                    <p style="font-size: 0.88rem; margin-bottom: 0.5rem;">
+                        <code>TicketTierRepository</code> needs methods to atomically decrement and increment <code>availableQuantity</code>
+                        at the database level. Think about how to make these operations safe under concurrent load.
+                    </p>
+                    <p style="font-size: 0.88rem;">
+                        <code>TicketHoldRepository</code> and <code>TicketOrderRepository</code> need
+                        appropriate query methods for lookups used by the service layer.
+                    </p>
+
+                </div></div>
+            </div>
+
+            <!-- Task 2: REST Endpoints -->
+            <div class="task-block" onclick="toggleTask(this)">
+                <div class="task-header">
+                    <h3><span class="task-number">2</span> Implement REST Endpoints</h3>
+                    <div class="task-meta">
+                        <span class="time-badge">10 min</span>
+                        <span class="difficulty medium">Medium</span>
+                        <span class="points">15 pts</span>
+                        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                </div>
+                <div class="task-body"><div class="task-body-inner">
+                    <div class="context">
+                        <strong>File:</strong> <code>TicketingController.java</code>
+                    </div>
+
+                    <table class="endpoint-table">
+                        <tr>
+                            <th>Method</th><th>Endpoint</th><th>Status</th><th>Description</th>
+                        </tr>
+                        <tr>
+                            <td><span class="method-post">POST</span></td>
+                            <td><code>/api/events/{eventId}/hold</code></td>
+                            <td>201</td>
+                            <td>Hold tickets for a tier</td>
+                        </tr>
+                        <tr>
+                            <td><span class="method-post">POST</span></td>
+                            <td><code>/api/holds/{holdToken}/confirm</code></td>
+                            <td>200</td>
+                            <td>Confirm hold &rarr; create order</td>
+                        </tr>
+                        <tr>
+                            <td><span class="method-delete">DELETE</span></td>
+                            <td><code>/api/holds/{holdToken}</code></td>
+                            <td>204</td>
+                            <td>Cancel hold, release tickets</td>
+                        </tr>
+                        <tr>
+                            <td><span class="method-get">GET</span></td>
+                            <td><code>/api/events/{eventId}/availability</code></td>
+                            <td>200</td>
+                            <td>Check tier availability</td>
+                        </tr>
+                        <tr>
+                            <td><span class="method-get">GET</span></td>
+                            <td><code>/api/events/{eventId}/orders</code></td>
+                            <td>200</td>
+                            <td>List confirmed orders</td>
+                        </tr>
+                    </table>
+
+                    <div class="info-box">
+                        <strong>Requirements:</strong> Use <code>@Valid</code> on request bodies.
+                        Use proper HTTP status codes (<code>@ResponseStatus</code> or <code>ResponseEntity</code>).
+                        The <code>GlobalExceptionHandler</code> already maps exceptions to error responses.
+                    </div>
+
+                </div></div>
+            </div>
+
+            <!-- Task 3: Core Business Logic -->
+            <div class="task-block" onclick="toggleTask(this)">
+                <div class="task-header">
+                    <h3><span class="task-number">3</span> Core Business Logic &mdash; Hold / Confirm / Cancel / Expire</h3>
+                    <div class="task-meta">
+                        <span class="time-badge">25 min</span>
+                        <span class="difficulty critical">Critical</span>
+                        <span class="points">40 pts</span>
+                        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                </div>
+                <div class="task-body"><div class="task-body-inner">
+                    <div class="context">
+                        <strong>File:</strong> <code>TicketingService.java</code> &mdash; This is where the test is won or lost.
+                    </div>
+
+                    <h4 style="margin: 1rem 0 0.5rem;">3a. holdTickets() &mdash; The Hot Path (15 pts)</h4>
+                    <div class="danger-box">
+                        <strong>This method will receive 10,000 concurrent calls.</strong> It must:
+                        <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
+                            <li>Validate that the event exists and is currently on sale</li>
+                            <li>Validate that the tier belongs to the requested event</li>
+                            <li><strong>Decrement available inventory in a way that is safe under concurrency</strong> &mdash; if no tickets remain, throw <code>SoldOutException</code></li>
+                            <li>Create a <code>TicketHold</code> with a unique token, and return a <code>HoldResponse</code></li>
+                        </ul>
+                    </div>
+                    <div class="warning-box">
+                        <strong>Think carefully:</strong> If 20 threads read <code>availableQuantity == 5</code> at the same instant,
+                        all 20 will think tickets are available. How do you prevent this?
+                    </div>
+
+                    <h4 style="margin: 1.5rem 0 0.5rem;">3b. confirmHold() &mdash; Convert to Order + Notify (10 pts)</h4>
+                    <p style="font-size: 0.88rem; margin-bottom: 1rem;">
+                        Convert an active, non-expired hold into a confirmed <code>TicketOrder</code>.
+                        Calculate the total price and return an <code>OrderResponse</code>.
+                        Reject holds that have already expired or been cancelled.
+                    </p>
+                    <div class="info-box">
+                        <strong>Email notification:</strong> After a successful confirmation, send a confirmation email
+                        to the customer using the pre-built <code>NotificationService</code> (already injected into
+                        <code>TicketingService</code>). The email should include the order reference, event name,
+                        tier, quantity, and total price. No email should be sent if confirmation fails.
+                    </div>
+
+                    <h4 style="margin: 1.5rem 0 0.5rem;">3c. cancelHold() &mdash; Release Back (8 pts)</h4>
+                    <p style="font-size: 0.88rem; margin-bottom: 1rem;">
+                        Cancel an active hold and <strong>return the tickets to the available pool</strong>.
+                        Only active holds may be cancelled.
+                    </p>
+
+                    <h4 style="margin: 1.5rem 0 0.5rem;">3d. releaseExpiredHolds() &mdash; Scheduler Cleanup (7 pts)</h4>
+                    <p style="font-size: 0.88rem; margin-bottom: 1rem;">
+                        Find all holds that are past their expiry time, mark them as expired,
+                        and return tickets to the pool. Consider what happens if two threads
+                        (the scheduler and a user confirming) try to modify the same hold simultaneously.
+                        Return the count of released holds.
+                    </p>
+
+                </div></div>
+            </div>
+
+            <!-- Task 4: Tests -->
+            <div class="task-block" onclick="toggleTask(this)">
+                <div class="task-header">
+                    <h3><span class="task-number">4</span> Write Tests &mdash; Including Concurrency Test</h3>
+                    <div class="task-meta">
+                        <span class="time-badge">15 min</span>
+                        <span class="difficulty hard">Hard</span>
+                        <span class="points">30 pts</span>
+                        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                </div>
+                <div class="task-body"><div class="task-body-inner">
+                    <div class="context">
+                        <strong>File:</strong> <code>TicketingServiceTest.java</code>
+                    </div>
+
+                    <h4 style="margin-bottom: 0.75rem;">Functional Tests</h4>
+                    <ul style="padding-left: 1.25rem; font-size: 0.88rem; margin-bottom: 1rem;">
+                        <li><strong>Happy path:</strong> Hold &rarr; Confirm &rarr; verify order created, availability decreased</li>
+                        <li><strong>Sold out:</strong> Exhaust all tickets, verify next hold throws SoldOutException</li>
+                        <li><strong>Not on sale:</strong> Try to hold Event 2 tickets, verify NotOnSaleException</li>
+                        <li><strong>Cancel:</strong> Hold &rarr; Cancel &rarr; verify tickets returned to pool</li>
+                        <li><strong>Expired hold:</strong> Hold &rarr; wait/expire &rarr; verify tickets returned</li>
+                        <li><strong>Email notification:</strong> Confirm &rarr; verify email sent via <code>LoggingNotificationService.getSentMessages()</code></li>
+                        <li><strong>No email on failure:</strong> Failed confirm (expired hold) &rarr; verify no email sent</li>
+                    </ul>
+
+                    <h4 style="margin-bottom: 0.75rem; color: var(--highlight);">★ REQUIRED: Concurrent Oversell Prevention Test</h4>
+                    <div class="danger-box">
+                        <strong>This test is NOT optional.</strong> It is the most important test in the entire exercise.
+                        You must write a multi-threaded integration test that simulates the hot onsale scenario
+                        and <strong>proves</strong> your system never oversells.
+                        <br><br>
+                        <strong>Scenario:</strong> Set VIP tier to <strong>5</strong> available tickets. Launch <strong>20 threads simultaneously</strong>,
+                        each trying to hold 1 ticket.
+                        <br><br>
+                        <strong>Expected result:</strong>
+                        <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
+                            <li>Exactly <strong>5</strong> threads succeed (get a hold token)</li>
+                            <li>Exactly <strong>15</strong> threads get <code>SoldOutException</code></li>
+                            <li><code>availableQuantity == 0</code> (not negative &mdash; never oversold)</li>
+                        </ul>
+                    </div>
+
+                    <div class="warning-box">
+                        <strong>Why this test matters:</strong> A naive implementation that reads-then-writes in Java
+                        will pass all single-threaded tests but fail catastrophically under concurrent load.
+                        This test proves your system handles the real-world scenario correctly.
+                    </div>
+
+                </div></div>
+            </div>
+        </div>
+
+        <!-- ===================== API REFERENCE ===================== -->
+        <div class="tab-content" id="tab-api">
+            <div class="section-title">API Reference</div>
+
+            <h3 style="margin-bottom: 1rem; font-size: 0.95rem;">Hold Tickets</h3>
+            <div class="code-block">
+<span class="method-post">POST</span> /api/events/{eventId}/hold
+Content-Type: application/json
+
+{
+    <span class="string">"tierId"</span>: <span class="number">1</span>,
+    <span class="string">"quantity"</span>: <span class="number">2</span>
+}
+
+<span class="comment">// 201 Created</span>
+{
+    <span class="string">"holdToken"</span>: <span class="string">"a1b2c3d4-e5f6-7890-abcd-ef1234567890"</span>,
+    <span class="string">"eventId"</span>: <span class="number">1</span>,
+    <span class="string">"tierId"</span>: <span class="number">1</span>,
+    <span class="string">"tierName"</span>: <span class="string">"VIP Floor"</span>,
+    <span class="string">"quantity"</span>: <span class="number">2</span>,
+    <span class="string">"totalPrice"</span>: <span class="string">"700.00"</span>,
+    <span class="string">"expiresAt"</span>: <span class="string">"2025-03-15T10:02:00"</span>,
+    <span class="string">"status"</span>: <span class="string">"ACTIVE"</span>
+}
+
+<span class="comment">// 409 Conflict (sold out)</span>
+{ <span class="string">"status"</span>: <span class="number">409</span>, <span class="string">"error"</span>: <span class="string">"Conflict"</span>, <span class="string">"message"</span>: <span class="string">"Not enough tickets available"</span> }
+
+<span class="comment">// 403 Forbidden (not on sale yet)</span>
+{ <span class="string">"status"</span>: <span class="number">403</span>, <span class="string">"error"</span>: <span class="string">"Forbidden"</span>, <span class="string">"message"</span>: <span class="string">"Tickets are not yet on sale"</span> }
+            </div>
+
+            <h3 style="margin: 1.5rem 0 1rem; font-size: 0.95rem;">Confirm Hold</h3>
+            <div class="code-block">
+<span class="method-post">POST</span> /api/holds/{holdToken}/confirm
+Content-Type: application/json
+
+{
+    <span class="string">"customerName"</span>: <span class="string">"John Doe"</span>,
+    <span class="string">"customerEmail"</span>: <span class="string">"john@example.com"</span>
+}
+
+<span class="comment">// 200 OK</span>
+{
+    <span class="string">"orderReference"</span>: <span class="string">"ORD-f47ac10b-58cc-4372-a567-0e02b2c3d479"</span>,
+    <span class="string">"eventId"</span>: <span class="number">1</span>,
+    <span class="string">"eventName"</span>: <span class="string">"Taylor Swift — Eras Tour"</span>,
+    <span class="string">"tierName"</span>: <span class="string">"VIP Floor"</span>,
+    <span class="string">"customerName"</span>: <span class="string">"John Doe"</span>,
+    <span class="string">"customerEmail"</span>: <span class="string">"john@example.com"</span>,
+    <span class="string">"quantity"</span>: <span class="number">2</span>,
+    <span class="string">"totalPrice"</span>: <span class="string">"700.00"</span>,
+    <span class="string">"createdAt"</span>: <span class="string">"2025-03-15T10:01:30"</span>
+}
+
+<span class="comment">// 410 Gone (hold expired)</span>
+{ <span class="string">"status"</span>: <span class="number">410</span>, <span class="string">"error"</span>: <span class="string">"Gone"</span>, <span class="string">"message"</span>: <span class="string">"Hold has expired or been cancelled"</span> }
+            </div>
+
+            <h3 style="margin: 1.5rem 0 1rem; font-size: 0.95rem;">Cancel Hold</h3>
+            <div class="code-block">
+<span class="method-delete">DELETE</span> /api/holds/{holdToken}
+
+<span class="comment">// 204 No Content (success — no body)</span>
+            </div>
+
+            <h3 style="margin: 1.5rem 0 1rem; font-size: 0.95rem;">Check Availability</h3>
+            <div class="code-block">
+<span class="method-get">GET</span> /api/events/{eventId}/availability
+
+<span class="comment">// 200 OK</span>
+{
+    <span class="string">"eventId"</span>: <span class="number">1</span>,
+    <span class="string">"eventName"</span>: <span class="string">"Taylor Swift — Eras Tour"</span>,
+    <span class="string">"venue"</span>: <span class="string">"National Stadium"</span>,
+    <span class="string">"eventDate"</span>: <span class="string">"2025-05-15T20:00:00"</span>,
+    <span class="string">"saleStatus"</span>: <span class="string">"ON_SALE"</span>,
+    <span class="string">"tiers"</span>: [
+        { <span class="string">"tierId"</span>: <span class="number">1</span>, <span class="string">"tierName"</span>: <span class="string">"VIP Floor"</span>, <span class="string">"price"</span>: <span class="string">"350.00"</span>, <span class="string">"totalQuantity"</span>: <span class="number">50</span>, <span class="string">"availableQuantity"</span>: <span class="number">48</span>, <span class="string">"status"</span>: <span class="string">"AVAILABLE"</span> },
+        { <span class="string">"tierId"</span>: <span class="number">2</span>, <span class="string">"tierName"</span>: <span class="string">"Gold Circle"</span>, <span class="string">"price"</span>: <span class="string">"200.00"</span>, <span class="string">"totalQuantity"</span>: <span class="number">200</span>, <span class="string">"availableQuantity"</span>: <span class="number">200</span>, <span class="string">"status"</span>: <span class="string">"AVAILABLE"</span> },
+        { <span class="string">"tierId"</span>: <span class="number">3</span>, <span class="string">"tierName"</span>: <span class="string">"General Admission"</span>, <span class="string">"price"</span>: <span class="string">"95.00"</span>, <span class="string">"totalQuantity"</span>: <span class="number">500</span>, <span class="string">"availableQuantity"</span>: <span class="number">0</span>, <span class="string">"status"</span>: <span class="string">"SOLD_OUT"</span> }
+    ]
+}
+            </div>
+
+            <h3 style="margin: 1.5rem 0 1rem; font-size: 0.95rem;">List Orders</h3>
+            <div class="code-block">
+<span class="method-get">GET</span> /api/events/{eventId}/orders
+
+<span class="comment">// 200 OK</span>
+[
+    {
+        <span class="string">"orderReference"</span>: <span class="string">"ORD-..."</span>,
+        <span class="string">"eventId"</span>: <span class="number">1</span>,
+        <span class="string">"eventName"</span>: <span class="string">"Taylor Swift — Eras Tour"</span>,
+        <span class="string">"tierName"</span>: <span class="string">"VIP Floor"</span>,
+        <span class="string">"customerName"</span>: <span class="string">"John Doe"</span>,
+        <span class="string">"customerEmail"</span>: <span class="string">"john@example.com"</span>,
+        <span class="string">"quantity"</span>: <span class="number">2</span>,
+        <span class="string">"totalPrice"</span>: <span class="string">"700.00"</span>,
+        <span class="string">"createdAt"</span>: <span class="string">"2025-03-15T10:01:30"</span>
+    }
+]
+            </div>
+
+            <h3 style="margin: 1.5rem 0 1rem; font-size: 0.95rem;">Error Response Format</h3>
+            <div class="info-box">
+                <strong>All errors</strong> follow this format (handled by <code>GlobalExceptionHandler</code>):
+            </div>
+            <div class="code-block">
+{
+    <span class="string">"timestamp"</span>: <span class="string">"2025-03-15T10:00:00.123"</span>,
+    <span class="string">"status"</span>: <span class="number">409</span>,
+    <span class="string">"error"</span>: <span class="string">"Conflict"</span>,
+    <span class="string">"message"</span>: <span class="string">"Not enough tickets available"</span>
+}
+            </div>
+            <table class="endpoint-table" style="margin-top: 1rem;">
+                <tr><th>Exception</th><th>HTTP Status</th><th>When</th></tr>
+                <tr><td><code>EventNotFoundException</code></td><td>404</td><td>Event ID doesn't exist</td></tr>
+                <tr><td><code>SoldOutException</code></td><td>409</td><td>Not enough tickets</td></tr>
+                <tr><td><code>HoldExpiredException</code></td><td>410</td><td>Hold expired/cancelled/not found</td></tr>
+                <tr><td><code>NotOnSaleException</code></td><td>403</td><td>Before onsale time</td></tr>
+                <tr><td><code>OptimisticLockException</code></td><td>409</td><td>Concurrent modification</td></tr>
+                <tr><td><code>MethodArgumentNotValidException</code></td><td>400</td><td>Validation errors</td></tr>
+            </table>
+        </div>
+
+        <!-- Rubric and Scoring sections: see interviewer version at cvs/ticketing-test-instructions.html -->
+
+    </div><!-- tab-body -->
+</div><!-- container -->
+
+<!-- Timer Widget -->
+<div class="timer-widget" id="timerWidget">
+    <span id="timerDisplay">60:00</span>
+    <button onclick="startTimer()">Start</button>
+    <button onclick="resetTimer()">Reset</button>
+</div>
+
+<script>
+    // Tab switching
+    function switchTab(id) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('#tabNav .tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-' + id).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // Task expand/collapse
+    function toggleTask(el) {
+        if (event.target.closest('.rubric') || event.target.closest('.notes-area')) return;
+        el.classList.toggle('open');
+    }
+
+    // Rubric expand/collapse
+    function toggleRubric(e, el) {
+        e.stopPropagation();
+        el.classList.toggle('open');
+    }
+
+    // Toggle all in a tab
+    function toggleAll(tabId) {
+        const tab = document.getElementById(tabId);
+        const blocks = tab.querySelectorAll('.task-block');
+        const allOpen = [...blocks].every(b => b.classList.contains('open'));
+        blocks.forEach(b => {
+            if (allOpen) b.classList.remove('open');
+            else b.classList.add('open');
+        });
+        event.stopPropagation();
+    }
+
+    // Candidate selector
+    function selectCandidate(btn, name) {
+        document.querySelectorAll('#tab-scoring .candidate-selector .tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.candidate-form').forEach(f => f.style.display = 'none');
+        document.getElementById('form-' + name).style.display = 'block';
+    }
+
+    // Score calculation
+    function calcTotal(name) {
+        const form = document.getElementById('form-' + name);
+        const inputs = form.querySelectorAll('input[type="number"]');
+        let total = 0;
+        inputs.forEach(i => { total += parseInt(i.value) || 0; });
+        document.getElementById('total-' + name).textContent = 'Total: ' + total + ' / 100';
+
+        let verdict = '';
+        if (total >= 80) verdict = 'Strong Hire';
+        else if (total >= 60) verdict = 'Hire';
+        else if (total >= 40) verdict = 'Borderline';
+        else verdict = 'No Hire';
+        document.getElementById('verdict-' + name).textContent = verdict;
+    }
+
+    // Timer
+    let timerInterval = null;
+    let timerSeconds = 60 * 60;
+
+    function startTimer() {
+        if (timerInterval) return;
+        timerInterval = setInterval(() => {
+            timerSeconds--;
+            if (timerSeconds <= 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                timerSeconds = 0;
+            }
+            updateTimerDisplay();
+        }, 1000);
+    }
+
+    function resetTimer() {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        timerSeconds = 60 * 60;
+        updateTimerDisplay();
+    }
+
+    function updateTimerDisplay() {
+        const m = Math.floor(timerSeconds / 60);
+        const s = timerSeconds % 60;
+        const display = document.getElementById('timerDisplay');
+        display.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        display.className = '';
+        if (timerSeconds <= 300) display.className = 'timer-danger';
+        else if (timerSeconds <= 600) display.className = 'timer-warning';
+    }
+</script>
+
+</body>
+</html>
